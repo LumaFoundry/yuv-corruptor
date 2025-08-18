@@ -81,8 +81,10 @@ bool init_context(Context& ctx) {
 
 string rand_suffix(Context& ctx) {
     std::uniform_int_distribution<int> d(0,25);
-    char a = 'a' + d(ctx.rng), b='a'+d(ctx.rng);
-    return string() + a + b;
+    char a = 'a' + d(ctx.rng);
+    char b = 'a' + d(ctx.rng);
+    char c = 'a' + d(ctx.rng);
+    return string() + a + b + c;
 }
 
 static string outname(const Context& ctx, const string& suf) {
@@ -105,8 +107,15 @@ bool make_blocky(Context& ctx, std::vector<OutFile>& outs) {
     // factor：缩到 1/f 后再放大，邻近采样制造块感
     std::uniform_int_distribution<int> df(6, 12);
     int f = df(ctx.rng);
-    string vf = "scale=iw/" + std::to_string(f) + ":ih/" + std::to_string(f) + ":flags=bilinear,"
-                "scale=iw:ih:flags=neighbor,scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    // 先缩小到固定整数偶数尺寸，再邻近放大回到输入分辨率（偶数）
+    int dw = std::max(2, ((ctx.cfg.w / f) / 2) * 2);
+    int dh = std::max(2, ((ctx.cfg.h / f) / 2) * 2);
+    int ow = (ctx.cfg.w / 2) * 2;
+    int oh = (ctx.cfg.h / 2) * 2;
+    std::ostringstream vfb;
+    vfb << "scale=" << dw << ":" << dh << ":flags=bilinear,"
+        << "scale=" << ow << ":" << oh << ":flags=neighbor";
+    string vf = vfb.str();
     string suf = rand_suffix(ctx);
     string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
@@ -249,6 +258,73 @@ bool make_chroma_bleed(Context& ctx, std::vector<OutFile>& outs) {
     return true;
 }
 
+bool make_luma_bleed(Context& ctx, std::vector<OutFile>& outs) {
+    // 模拟亮度扩散/拖影：对 Y 通道做水平/垂直的小半径 boxblur，并叠加边缘偏移
+    std::uniform_int_distribution<int> radius(1, 2);
+    int r = radius(ctx.rng);
+    // 用 lut 混合：Y = avg(Y, gblur(Y))
+    std::ostringstream vf;
+    vf << "split[y][tmp];[tmp]gblur=sigma=" << (0.6 + 0.2 * r)
+       << "[blur];[y][blur]blend=all_mode=average:all_opacity=1,"
+       << "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "luma_bleed", "FAILED"}); return false; }
+
+    std::ostringstream det; det << "sigma~" << (0.6 + 0.2 * r);
+    outs.push_back({fs::path(out).filename().string(), "luma_bleed", det.str()});
+    return true;
+}
+
+bool make_grain(Context& ctx, std::vector<OutFile>& outs) {
+    // 添加轻度胶片颗粒：noise + 轻微 sharpen，保持偶数尺寸
+    std::uniform_int_distribution<int> nstr(2, 6); // 基础强度 2..6
+    int s = nstr(ctx.rng) * 5; // 转为 10..30 更可见
+    uint32_t allowedSeed = (uint32_t)(ctx.cfg.seed % 2147480000ULL);
+    std::ostringstream vf;
+    vf << "noise=alls=" << s << ":allf=t+u:all_seed=" << allowedSeed
+       << ",unsharp=lx=3:ly=3:la=0.2:cx=3:cy=3:ca=0.0,scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "grain", "FAILED"}); return false; }
+    outs.push_back({fs::path(out).filename().string(), "grain", "noise+unsharp"});
+    return true;
+}
+
+bool make_ringing(Context& ctx, std::vector<OutFile>& outs) {
+    // 模拟振铃：先锐化再轻度去块，或通过 oversharp + deblock
+    std::ostringstream vf;
+    vf << "unsharp=lx=5:ly=5:la=1.2:cx=5:cy=5:ca=0.6,deblock=alpha=0.2:beta=0.2,scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "ringing", "FAILED"}); return false; }
+    outs.push_back({fs::path(out).filename().string(), "ringing", "unsharp+deblock"});
+    return true;
+}
+
+bool make_banding(Context& ctx, std::vector<OutFile>& outs) {
+    // 模拟色带：降低量化或抬升 posterize，在 Y 通道减少级别，再适度模糊
+    std::uniform_int_distribution<int> pow2(3, 6); // 2^3=8 .. 2^6=64
+    int levels = 1 << pow2(ctx.rng);
+    std::ostringstream vf;
+    vf << "lutyuv=y='trunc(val/" << levels << ")*" << levels << "',gblur=sigma=0.4,"
+       << "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "banding", "FAILED"}); return false; }
+    outs.push_back({fs::path(out).filename().string(), "banding", std::string("levels=")+std::to_string(levels)});
+    return true;
+}
+
 bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
     // 1) 导出 BMP 帧序列
     fs::path tmp = ctx.cfg.out_dir / ("tmp_frames_" + rand_suffix(ctx));
@@ -289,9 +365,10 @@ bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
         while ((int)drop_pos.size()<K) drop_pos.push_back(N-2-(int)drop_pos.size());
     }
 
-    // 3) 写 concat list
+    // 3) 写 concat list（使用 concat demuxer，带 header 与每帧 duration）
     fs::path list_path = tmp / "list.txt";
     std::ofstream lof(list_path);
+    lof << "ffconcat version 1.0\n";
     int dup_idx=0, drop_idx=0;
     for (int n=0;n<N;++n) {
         if (drop_idx<(int)drop_pos.size() && n==drop_pos[drop_idx]) { // 跳过
@@ -300,10 +377,17 @@ bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
         }
         std::ostringstream fn; fn << "f_" << std::setw(6) << std::setfill('0') << n << ".bmp";
         lof << "file " << fn.str() << "\n";
+        lof << "duration " << (1.0 / std::max(1, ctx.cfg.fps)) << "\n";
         if (dup_idx<(int)dup_pos.size() && n==dup_pos[dup_idx]) {
             lof << "file " << fn.str() << "\n"; // 再写一次，实现“重复帧”
+            lof << "duration " << (1.0 / std::max(1, ctx.cfg.fps)) << "\n";
             ++dup_idx;
         }
+    }
+    // 末尾再写一次最后一帧，保证最后一个 duration 生效
+    if (N>0) {
+        std::ostringstream last; last << "f_" << std::setw(6) << std::setfill('0') << (N-1) << ".bmp";
+        lof << "file " << last.str() << "\n";
     }
     lof.close();
 
@@ -312,9 +396,9 @@ bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
     fs::path out = fs::absolute(ctx.cfg.out_dir / outname(ctx, suf));
     std::vector<string> enc = {
         ctx.cfg.ffmpeg, "-hide_banner", "-y",
-        "-r", std::to_string(ctx.cfg.fps),
+        "-fflags","+genpts",
         "-f","concat","-safe","0","-i", pstr(list_path),
-        "-c:v","libx264","-crf","22",
+        "-pix_fmt","yuv420p","-c:v","libx264","-crf","22",
         pstr(out)
     };
     if (run_cmd(enc)!=0) { outs.push_back({ out.filename().string(), "repeat_frames_keep_count", "FAILED"}); return false; }
@@ -342,6 +426,10 @@ bool make_all(Context& ctx, std::vector<OutFile>& outs) {
     ok &= make_smooth(ctx, outs);
     ok &= make_highclip(ctx, outs);
     ok &= make_chroma_bleed(ctx, outs);
+    ok &= make_luma_bleed(ctx, outs);
+    ok &= make_grain(ctx, outs);
+    ok &= make_ringing(ctx, outs);
+    ok &= make_banding(ctx, outs);
     ok &= make_repeat(ctx, outs);
     return ok;
 }

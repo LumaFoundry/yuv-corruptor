@@ -44,6 +44,10 @@ bool make_smooth(Context&, std::vector<OutFile>&);
 bool make_highclip(Context&, std::vector<OutFile>&);
 bool make_chroma_bleed(Context&, std::vector<OutFile>&);
 bool make_repeat(Context&, std::vector<OutFile>&); // 保持帧数一致
+bool make_luma_bleed(Context&, std::vector<OutFile>&);
+bool make_grain(Context&, std::vector<OutFile>&);
+bool make_ringing(Context&, std::vector<OutFile>&);
+bool make_banding(Context&, std::vector<OutFile>&);
 
 // 报告
 bool write_manifest(const Context&, const std::vector<OutFile>&);
