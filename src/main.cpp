@@ -1,6 +1,7 @@
 #include "Defects.hpp"
 #include <iostream>
 #include <regex>
+#include <filesystem>
 
 static void usage() {
     std::cout <<
@@ -12,7 +13,7 @@ static void usage() {
 "  <input.yuv>           Path to raw YUV file (8-bit by default)\n"
 "\n"
 "Flags:\n"
-"  -r WxH                Resolution, e.g. -r 176x144 (required)\n"
+"  -r WxH                Resolution, e.g. -r 176x144 (if omitted, try infer from filename like *_352x288_30_*.yuv)\n"
 "  -f fps                Frame rate (default 30)\n"
 "  -p pixfmt             Pixel format (default yuv420p)\n"
 "  -s seed               RNG seed (uint64). Default: time-based\n"
@@ -22,6 +23,26 @@ static void usage() {
 "  --ffprobe <path>      ffprobe executable (default: ffprobe in PATH)\n"
 "\n"
 "Backward compatible (optional): --in/--w/--h/--fps/--pix/--seed/--types/--out\n";
+}
+
+static bool infer_from_filename(const std::string& in_path, int& w, int& h, int& fps) {
+    try {
+        std::filesystem::path p(in_path);
+        std::string name = p.stem().string();
+        // Match ..._<W>x<H>[_<FPS>]_...
+        std::regex re(R"((?:^|[^0-9])([0-9]+)\s*x\s*([0-9]+)(?:[^0-9]+([0-9]{1,3}))?)", std::regex::icase);
+        std::smatch m;
+        if (std::regex_search(name, m, re)) {
+            int iw = std::stoi(m[1].str());
+            int ih = std::stoi(m[2].str());
+            int ifps = fps; // keep incoming default unless group 3 exists
+            if (m.size() >= 4 && m[3].matched) {
+                try { ifps = std::stoi(m[3].str()); } catch (...) {}
+            }
+            if (iw > 0 && ih > 0) { w = iw; h = ih; fps = ifps; return true; }
+        }
+    } catch (...) {}
+    return false;
 }
 
 static bool parse_WxH(const std::string& s, int& w, int& h) {
@@ -42,6 +63,7 @@ int main(int argc, char** argv) {
     s.pix = "yuv420p";
 
     // Parse
+    bool fps_set_by_cli = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto need = [&](int n=1){ if (i+n >= argc) { ok=false; return false; } return true; };
@@ -54,7 +76,7 @@ int main(int argc, char** argv) {
             std::string wxh = argv[++i];
             if (!parse_WxH(wxh, s.w, s.h)) { std::cerr<<"Invalid -r "<<wxh<<"\n"; ok=false; }
         }
-        else if (a == "-f" && need()) { s.fps = std::stoi(argv[++i]); }
+        else if (a == "-f" && need()) { s.fps = std::stoi(argv[++i]); fps_set_by_cli = true; }
         else if (a == "-p" && need()) { s.pix = argv[++i]; }
         else if (a == "-s" && need()) { s.seed = std::stoull(argv[++i]); }
         else if (a == "-t" && need()) {
@@ -71,7 +93,7 @@ int main(int argc, char** argv) {
         else if (a == "--in" && need()) { s.in_path = argv[++i]; }
         else if (a == "--w" && need())  { s.w = std::stoi(argv[++i]); }
         else if (a == "--h" && need())  { s.h = std::stoi(argv[++i]); }
-        else if (a == "--fps" && need()){ s.fps = std::stoi(argv[++i]); }
+        else if (a == "--fps" && need()){ s.fps = std::stoi(argv[++i]); fps_set_by_cli = true; }
         else if (a == "--pix" && need()){ s.pix = argv[++i]; }
         else if (a == "--seed" && need()){ s.seed = std::stoull(argv[++i]); }
         else if (a == "--types" && need()){
@@ -85,6 +107,15 @@ int main(int argc, char** argv) {
         else {
             std::cerr << "Unknown or incomplete arg: " << a << "\n";
             ok = false;
+        }
+    }
+
+    // Try infer WxH / fps from filename if missing
+    if (ok && !s.in_path.empty() && (s.w <= 0 || s.h <= 0 || !fps_set_by_cli)) {
+        int iw = s.w, ih = s.h, ifps = s.fps;
+        if (infer_from_filename(s.in_path, iw, ih, ifps)) {
+            if (s.w <= 0 || s.h <= 0) { s.w = iw; s.h = ih; }
+            if (!fps_set_by_cli) { s.fps = ifps; }
         }
     }
 
