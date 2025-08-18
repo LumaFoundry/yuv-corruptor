@@ -22,6 +22,67 @@
 
 输出的文件会在输入基名后追加随机 3 字母后缀，例如 `input_abc.mp4`（种子可控）。
 
+## 缺陷详解与示例
+
+以下说明基于本目录下`CoastGuard_1920x1080_30.yuv`生成，种子为`1755512385570399000`。截图取自一款开源好用的视觉检查工具：[YUViz](https://github.com/LokiW-03/YUViz)
+
+### bitrate_blocky（低码率块状）
+采用低码率 + 快速预设进行编码，平坦区域、运动区域容易出现明显宏块边界/马赛克。下图右侧为低码率编码的结果。
+
+![bitrate_blocky](public/bitrate_blocky.png)
+
+### jitter_1px（1 像素抖动）
+周期性 1px 水平/垂直环绕移位。对比参考帧与抖动帧，细竖线/横线边缘会出现位置跳动。下图中Diff模式下以下两种模式会周期性交替显示。
+
+![jitter_off（参考）](public/jitter_off.png)
+
+![jitter_on（抖动）](public/jitter_on.png)
+
+### edge_oversmooth（边缘过平滑）
+轻度高斯模糊使边缘与纹理变软，细节略有涂抹感。
+Diff模式下物体边缘会格外突出。例如下图中快艇和logo边缘都被突出显示。
+
+![edge_oversmooth](public/edge_smooth.png)
+
+### highlight_clip（高光裁剪）
+超过阈值的高光被裁为纯白，高亮区域的高光细节丢失。下图从左到右依次是：原视频、高光裁剪后视频、Diff模式。
+
+![highlight_clip](public/highlight_clip.png)
+
+### chroma_bleed（色度“溢出/错位”）
+色度通道发生轻微错位，边缘处出现彩色边/拖影；常见为 Cb/Cr 的水平/垂直微位移。下图右侧为色彩溢出的结果，色彩向左侧偏移。
+
+![chroma_bleed](public/chroma_bleeding.png)
+
+### grain（胶片颗粒）
+加入细微噪声，平坦区域出现轻度随机纹理。下图右侧为胶片颗粒施加的结果。
+
+![grain](public/grain.png)
+
+### ringing（振铃/光晕）
+过锐与轻去块配合，强对比边缘附近出现光晕/二次纹理。
+Diff模式下主要体现为静态物体边缘格外突出，例如图中右下角的logo。
+
+![ringing](public/ringing.png)
+
+### banding（色带）
+降低亮度级别（近似色阶化）后更易出现条带状过渡，渐变区域尤为明显。
+
+![banding](public/banding.png)
+
+### ghosting（拖影）
+时域混合造成运动目标后方出现淡淡尾迹。
+Diff模式下体现为运动物体边缘格外明显，而静态物体边缘不明显。例如下图Diff中海水和快艇的边缘较明显，但是logo和原视频相差不大。
+
+![ghosting](public/ghosting.png)
+
+### colorspace_mismatch（色彩空间不匹配）
+以一种色彩空间（如 BT.709）解码却以另一种（如 BT.601）标记/转换输出，画面出现轻微色偏（肤色、红橙等尤为明显）。下图中右侧即为色彩故意偏移的结果。
+
+![colorspace_mismatch](public/colourspace.png)
+
+
+
 ### 依赖
 - C++17 编译器（GCC/Clang/MSVC）
 - CMake ≥ 3.20（推荐 Ninja）
