@@ -57,6 +57,25 @@ inline bool util_ensure_dir(const fs::path &d) {
     return true;
   return fs::create_directories(d, ec);
 }
+// 读取首帧 Y 平面的直方图（256 bins）。成功返回 true 并填充 hist
+inline bool probe_luma_hist_first_frame(const Context &ctx,
+                                        std::vector<uint32_t> &hist) {
+  if (ctx.cfg.w <= 0 || ctx.cfg.h <= 0)
+    return false;
+  const size_t y_bytes = (size_t)ctx.cfg.w * (size_t)ctx.cfg.h;
+  std::ifstream ifs(ctx.cfg.in_path, std::ios::binary);
+  if (!ifs)
+    return false;
+  std::vector<unsigned char> buf(y_bytes);
+  ifs.read(reinterpret_cast<char *>(buf.data()), (std::streamsize)y_bytes);
+  if ((size_t)ifs.gcount() != y_bytes)
+    return false;
+  hist.assign(256, 0);
+  for (size_t i = 0; i < y_bytes; ++i) {
+    ++hist[buf[i]];
+  }
+  return true;
+}
 // 读取首帧 Y 平面，返回最大亮度（8-bit）。失败返回 -1。
 inline int probe_luma_max_first_frame(const Context &ctx) {
   if (ctx.cfg.w <= 0 || ctx.cfg.h <= 0)
@@ -280,14 +299,36 @@ bool make_highclip(Context &ctx, std::vector<OutFile> &outs) {
   // 高光裁剪：自适应阈值，尽量确保至少某些区域被 clip
   int y_max = probe_luma_max_first_frame(ctx);
   int T = 240; // 回退默认
-  if (y_max >= 0) {
-    // 目标：略低于首帧最大亮度，且上限不超过 250，保证触发 clip 同时不过于严重
-    int lower = std::max(220, y_max - 10); // 放宽到 220 以覆盖偏暗场景
-    int upper = std::min(250, std::max(lower + 2, y_max - 1));
-    if (upper < lower)
-      upper = lower;
-    std::uniform_int_distribution<int> th(lower, upper);
-    T = th(ctx.rng);
+  if (y_max >= 2) {
+    // 先尝试基于直方图的 top-X%（1%~5%）定位阈值，确保“大片”高光区域被裁剪
+    std::vector<uint32_t> hist;
+    if (probe_luma_hist_first_frame(ctx, hist)) {
+      uint64_t total = 0;
+      for (uint32_t v : hist)
+        total += v;
+      std::uniform_real_distribution<double> pct(0.01, 0.05);
+      double target = pct(ctx.rng);
+      uint64_t cutoff = (uint64_t)(total * (1.0 - target));
+      uint64_t acc = 0;
+      int cdf_idx = 255;
+      for (int i = 0; i < 256; ++i) {
+        acc += hist[i];
+        if (acc >= cutoff) {
+          cdf_idx = i;
+          break;
+        }
+      }
+      int lower = std::max(8, cdf_idx - 20);
+      int upper =
+          std::min(250, std::max(lower + 1, std::min(y_max - 1, cdf_idx)));
+      std::uniform_int_distribution<int> th(lower, upper);
+      T = th(ctx.rng);
+    } else {
+      int lower = std::max(10, y_max - 40);
+      int upper = std::min(250, std::max(lower + 1, y_max - 1));
+      std::uniform_int_distribution<int> th(lower, upper);
+      T = th(ctx.rng);
+    }
   }
   string vf = "lutyuv=y='if(gte(val\\," + std::to_string(T) +
               ")\\,255\\,val)',scale=trunc(iw/2)*2:trunc(ih/2)*2";
