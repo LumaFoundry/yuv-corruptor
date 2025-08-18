@@ -17,7 +17,7 @@ static void usage() {
 "  -f fps                Frame rate (default 30)\n"
 "  -p pixfmt             Pixel format (default yuv420p)\n"
 "  -s seed               RNG seed (uint64). Default: time-based\n"
-"  -t types              CSV in {blocky,brightness,jitter,smooth,highclip,chroma,luma,grain,ringing,banding,ghosting,repeat,all}\n"
+"  -t types              CSV in {blocky,brightness,jitter,smooth,highclip,chroma,luma,grain,ringing,banding,ghosting,colorspace,repeat,all}\n"
 "  -o outdir             Output directory (default out_<timestamp>)\n"
 "  --ffmpeg <path>       ffmpeg executable (default: ffmpeg in PATH)\n"
 "  --ffprobe <path>      ffprobe executable (default: ffprobe in PATH)\n"
@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
     if (has("ringing"))    all_ok &= make_ringing(ctx, outs);
     if (has("banding"))    all_ok &= make_banding(ctx, outs);
     if (has("ghosting"))   all_ok &= make_ghosting(ctx, outs);
+    if (has("colorspace")) all_ok &= make_colorspace_mismatch(ctx, outs);
     if (has("repeat"))     all_ok &= make_repeat(ctx, outs);
 
     if (!write_manifest(ctx, outs)) {

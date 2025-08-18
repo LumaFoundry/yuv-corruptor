@@ -367,6 +367,30 @@ bool make_ghosting(Context& ctx, std::vector<OutFile>& outs) {
     return true;
 }
 
+bool make_colorspace_mismatch(Context& ctx, std::vector<OutFile>& outs) {
+    // 在解码/过滤阶段假设 BT.709，输出标记/转换为 BT.601（或反之），制造色彩空间错配
+    // 这里选择统一将输入当作 bt709 解码，然后在编码输出时标记/转换为 bt601，产生轻微色偏
+    // 注：不同 ffmpeg 版本/构建对 colorspace 标记/转换的行为略有差异，取尽量通用的写法
+    std::uniform_int_distribution<int> mode(0,1);
+    bool to601 = mode(ctx.rng)==0; // 半数转 709->601，半数 601->709
+    const char* inspace  = to601 ? "bt709"    : "smpte170m"; // 输入假定
+    const char* outspace = to601 ? "smpte170m" : "bt709";    // 输出目标：用 smpte170m 表征 bt601
+
+    // 使用 colormatrix 进行 709<->601 转换（广泛可用），再做偶数尺寸缩放
+    std::ostringstream vf;
+    vf << "colormatrix=src=" << (to601?"bt709":"bt601") << ":dst=" << (to601?"bt601":"bt709")
+       << ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
+
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "colorspace_mismatch", "FAILED"}); return false; }
+    std::ostringstream det; det << inspace << "->" << outspace;
+    outs.push_back({fs::path(out).filename().string(), "colorspace_mismatch", det.str()});
+    return true;
+}
+
 bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
     // 1) 导出 BMP 帧序列
     fs::path tmp = ctx.cfg.out_dir / ("tmp_frames_" + rand_suffix(ctx));
@@ -473,6 +497,7 @@ bool make_all(Context& ctx, std::vector<OutFile>& outs) {
     ok &= make_ringing(ctx, outs);
     ok &= make_banding(ctx, outs);
     ok &= make_ghosting(ctx, outs);
+    ok &= make_colorspace_mismatch(ctx, outs);
     ok &= make_repeat(ctx, outs);
     return ok;
 }
