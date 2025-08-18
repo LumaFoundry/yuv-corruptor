@@ -117,7 +117,7 @@ Flags:
   -f fps                帧率（默认 30；若未提供且文件名包含 _<fps>_ 将尝试从文件名推断）
   -p pixfmt             像素格式（默认 yuv420p）
   -s seed               随机种子（uint64，默认基于时间）
-  -t types              逗号分隔：{blocky,brightness,jitter,smooth,highclip,chroma,luma,grain,ringing,banding,ghosting,repeat,all}
+  -t types              逗号分隔：{blocky,brightness,jitter,smooth,highclip,chroma,luma,grain,ringing,banding,ghosting,colorspace,repeat,all}
   -o outdir             输出目录（默认 out_<timestamp>）
   --ffmpeg <path>       ffmpeg 可执行文件路径（默认：使用 PATH 中的 ffmpeg）
   --ffprobe <path>      ffprobe 可执行文件路径（默认：使用 PATH 中的 ffprobe）
