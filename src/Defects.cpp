@@ -259,14 +259,35 @@ bool make_chroma_bleed(Context& ctx, std::vector<OutFile>& outs) {
 }
 
 bool make_luma_bleed(Context& ctx, std::vector<OutFile>& outs) {
-    // 模拟亮度扩散/拖影：对 Y 通道做水平/垂直的小半径 boxblur，并叠加边缘偏移
-    std::uniform_int_distribution<int> radius(1, 2);
-    int r = radius(ctx.rng);
-    // 用 lut 混合：Y = avg(Y, gblur(Y))
+    // 与 chroma_bleed 一致：在若干短帧段内启用轻度亮度拖影（ghosting-like）
+    if (ctx.total_frames==0) { std::cerr<<"[warn] total_frames unknown; assuming short video\n"; }
+    int N = (int)ctx.total_frames;
+    std::uniform_int_distribution<int> nseg(1, 3);
+    std::uniform_int_distribution<int> seglen(2, 5);
+    int S = nseg(ctx.rng);
+
+    // 组合 enable 段
+    std::vector<std::pair<int,int>> spans;
+    for (int i=0;i<S;++i){
+        int len = seglen(ctx.rng);
+        int start = (N>10)? (int)(std::uniform_int_distribution<int>(5, std::max(5,N-len-5))(ctx.rng)) : 0;
+        spans.push_back({start, start+len});
+    }
+    // 轻度参数
+    std::uniform_real_distribution<double> sigmaR(0.5, 0.9);
+    std::uniform_real_distribution<double> opR(0.25, 0.35);
+    double sigma = sigmaR(ctx.rng);
+    double opacity = opR(ctx.rng);
+
+    // enable 表达式： between(n,a,b)+between(n,c,d)+...
+    std::ostringstream en;
+    for (size_t i=0;i<spans.size();++i){ if (i) en<<" + "; en<<"between(n\\,"<<spans[i].first<<"\\,"<<spans[i].second<<")"; }
+
+    // 构建滤镜链：分流 -> 模糊 -> 混合（仅在 spans 启用）
     std::ostringstream vf;
-    vf << "split[y][tmp];[tmp]gblur=sigma=" << (0.6 + 0.2 * r)
-       << "[blur];[y][blur]blend=all_mode=average:all_opacity=1,"
-       << "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    vf << "split[y][tmp];[tmp]gblur=sigma=" << std::fixed << std::setprecision(2) << sigma
+       << "[blur];[y][blur]blend=all_mode=average:all_opacity=" << std::setprecision(2) << opacity
+       << ":enable='" << en.str() << "',scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
     string suf = rand_suffix(ctx);
     string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
@@ -274,7 +295,10 @@ bool make_luma_bleed(Context& ctx, std::vector<OutFile>& outs) {
     cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
     if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "luma_bleed", "FAILED"}); return false; }
 
-    std::ostringstream det; det << "sigma~" << (0.6 + 0.2 * r);
+    std::ostringstream det;
+    det<<"frames=";
+    for (size_t i=0;i<spans.size();++i){ if (i) det<<","; det<<"["<<spans[i].first<<".."<<spans[i].second<<"]"; }
+    det<<" sigma="<<std::setprecision(2)<<sigma<<" opacity="<<std::setprecision(2)<<opacity;
     outs.push_back({fs::path(out).filename().string(), "luma_bleed", det.str()});
     return true;
 }
@@ -322,6 +346,24 @@ bool make_banding(Context& ctx, std::vector<OutFile>& outs) {
     cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
     if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "banding", "FAILED"}); return false; }
     outs.push_back({fs::path(out).filename().string(), "banding", std::string("levels=")+std::to_string(levels)});
+    return true;
+}
+
+bool make_ghosting(Context& ctx, std::vector<OutFile>& outs) {
+    // 轻度 ghosting：tblend 轻微平均，产生时域残影
+    // 注意：tblend 需要至少两帧才起效
+    std::uniform_real_distribution<double> op(0.25, 0.35);
+    double opacity = op(ctx.rng);
+    std::ostringstream vf;
+    vf << "tblend=all_mode=average:all_opacity=" << std::fixed << std::setprecision(2) << opacity
+       << ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
+    string suf = rand_suffix(ctx);
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+    auto cmd = base_in_args(ctx);
+    cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "ghosting", "FAILED"}); return false; }
+    std::ostringstream det; det << "opacity=" << std::setprecision(2) << opacity;
+    outs.push_back({fs::path(out).filename().string(), "ghosting", det.str()});
     return true;
 }
 
@@ -430,6 +472,7 @@ bool make_all(Context& ctx, std::vector<OutFile>& outs) {
     ok &= make_grain(ctx, outs);
     ok &= make_ringing(ctx, outs);
     ok &= make_banding(ctx, outs);
+    ok &= make_ghosting(ctx, outs);
     ok &= make_repeat(ctx, outs);
     return ok;
 }

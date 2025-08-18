@@ -48,6 +48,7 @@ bool make_luma_bleed(Context&, std::vector<OutFile>&);
 bool make_grain(Context&, std::vector<OutFile>&);
 bool make_ringing(Context&, std::vector<OutFile>&);
 bool make_banding(Context&, std::vector<OutFile>&);
+bool make_ghosting(Context&, std::vector<OutFile>&);
 
 // 报告
 bool write_manifest(const Context&, const std::vector<OutFile>&);
