@@ -122,31 +122,22 @@ static std::vector<string> base_in_args(const Context &ctx) {
 }
 
 bool make_blocky(Context &ctx, std::vector<OutFile> &outs) {
-  // factor：缩到 1/f 后再放大，邻近采样制造块感
-  std::uniform_int_distribution<int> df(6, 12);
-  int f = df(ctx.rng);
-  // 先缩小到固定整数偶数尺寸，再邻近放大回到输入分辨率（偶数）
-  int dw = std::max(2, ((ctx.cfg.w / f) / 2) * 2);
-  int dh = std::max(2, ((ctx.cfg.h / f) / 2) * 2);
-  int ow = (ctx.cfg.w / 2) * 2;
-  int oh = (ctx.cfg.h / 2) * 2;
-  std::ostringstream vfb;
-  vfb << "scale=" << dw << ":" << dh << ":flags=bilinear,"
-      << "scale=" << ow << ":" << oh << ":flags=neighbor";
-  string vf = vfb.str();
+  // 低码率+快速预设：通过编码器压缩产生块状/马赛克伪影（更贴近解码/传输失真）
+  string vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2"; // 保证偶数尺寸
   string suf = rand_suffix(ctx);
   string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
   auto cmd = base_in_args(ctx);
-  cmd.insert(cmd.end(), {"-vf", vf, "-c:v", "libx264", "-crf", "28", out});
+  cmd.insert(cmd.end(), {"-vf", vf, "-c:v", "libx264", "-b:v", "500k",
+                         "-preset", "veryfast", out});
   if (run_cmd(cmd) != 0) {
     outs.push_back(
-        {fs::path(out).filename().string(), "lowres_blocky", "FAILED"});
+        {fs::path(out).filename().string(), "bitrate_blocky", "FAILED"});
     return false;
   }
 
-  outs.push_back({fs::path(out).filename().string(), "lowres_blocky",
-                  "down/up factor=" + std::to_string(f)});
+  outs.push_back({fs::path(out).filename().string(), "bitrate_blocky",
+                  "b=500k preset=veryfast"});
   return true;
 }
 
