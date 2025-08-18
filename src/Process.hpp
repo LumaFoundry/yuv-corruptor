@@ -9,9 +9,17 @@ inline int run_cmd(const std::vector<std::string>& args) {
     std::string cmd;
     for (size_t i=0;i<args.size();++i) {
         if (i) cmd += " ";
-        // 如果已经带引号则直接追加；否则加引号
-        if (args[i].size() && (args[i][0]=='"' || args[i][0]=='\'')) cmd += args[i];
-        else cmd += "\"" + args[i] + "\"";
+        const std::string& a = args[i];
+        const bool alreadyQuoted = a.size() && (a.front()=='"' || a.front()=='\'');
+        const bool hasSpaceOrQuote = a.find_first_of(" \t\"") != std::string::npos;
+        if (alreadyQuoted) {
+            cmd += a;
+        } else if (i==0) {
+            // 对于可执行文件名，如果没有空格，不加引号，避免 PATH 搜索异常
+            if (hasSpaceOrQuote) cmd += "\"" + a + "\""; else cmd += a;
+        } else {
+            cmd += "\"" + a + "\"";
+        }
     }
     std::cerr << "[cmd] " << cmd << "\n";
     return std::system(cmd.c_str());

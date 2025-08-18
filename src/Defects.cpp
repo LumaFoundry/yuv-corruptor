@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <fstream>
 #include <ctime>
+#include <iostream>
 
 using std::string; namespace fs = std::filesystem;
 
@@ -25,6 +26,9 @@ static inline string ts_now() {
 
 // 本地最小工具函数，避免包含顺序导致的可见性问题
 namespace {
+    inline std::string pstr(const fs::path& p) {
+        return p.lexically_normal().generic_string(); // use forward slashes
+    }
     inline std::string util_quote(const std::string& s) {
         return std::string("\"") + s + "\"";
     }
@@ -93,7 +97,7 @@ static std::vector<string> base_in_args(const Context& ctx) {
         "-pix_fmt", ctx.cfg.pix,
         "-r", std::to_string(ctx.cfg.fps),
         "-f", "rawvideo",
-        "-i", ctx.cfg.in_path
+        "-i", pstr(fs::absolute(ctx.cfg.in_path))
     };
 }
 
@@ -102,13 +106,13 @@ bool make_blocky(Context& ctx, std::vector<OutFile>& outs) {
     std::uniform_int_distribution<int> df(6, 12);
     int f = df(ctx.rng);
     string vf = "scale=iw/" + std::to_string(f) + ":ih/" + std::to_string(f) + ":flags=bilinear,"
-                "scale=iw:ih:flags=neighbor";
+                "scale=iw:ih:flags=neighbor,scale=trunc(iw/2)*2:trunc(ih/2)*2";
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf, "-c:v","libx264","-crf","28", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "lowres_blocky", "FAILED"}); return false; }
 
     outs.push_back({fs::path(out).filename().string(), "lowres_blocky",
         "down/up factor="+std::to_string(f)});
@@ -119,13 +123,13 @@ bool make_brightness(Context& ctx, std::vector<OutFile>& outs) {
     // 微亮度偏移：-3..+3（8-bit）
     std::uniform_int_distribution<int> d(-3,3);
     int delta = d(ctx.rng);
-    string vf = "lutyuv=y='clip(val+" + std::to_string(delta) + ",0,255)'";
+    string vf = "lutyuv=y='clip(val+" + std::to_string(delta) + ",0,255)',scale=trunc(iw/2)*2:trunc(ih/2)*2";
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf, "-c:v","libx264","-crf","22", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "brightness_drift", "FAILED"}); return false; }
 
     outs.push_back({fs::path(out).filename().string(), "brightness_drift",
         "delta_Y=" + std::to_string(delta) + " (global)"});
@@ -133,30 +137,26 @@ bool make_brightness(Context& ctx, std::vector<OutFile>& outs) {
 }
 
 bool make_jitter(Context& ctx, std::vector<OutFile>& outs) {
-    // 轻微抖动：每 K 帧向左右/上下平移 1 像素（镜像填充边界）
+    // 轻微抖动：每 K 帧偏移 1 像素（用 pad+fillborders 再 crop，避免对 crop 使用 enable）
     std::uniform_int_distribution<int> dk(8, 20);
     std::uniform_int_distribution<int> ds(0,1); // 0:h, 1:v
     int K = dk(ctx.rng);
     bool horiz = ds(ctx.rng)==0;
-    // 条件启用 enable= (n % K == 0)
-    string cond = "mod(n\\," + std::to_string(K) + ")=0";
-    string crop, pad, fill;
+    std::ostringstream vfoss;
     if (horiz) {
-        crop = "crop=iw-1:ih:1:0:enable='" + cond + "'";
-        pad  = "pad=iw:ih:1:0:enable='" + cond + "'";
-        fill = "fillborders=left=1:mode=mirror:enable='" + cond + "'";
+        vfoss << "pad=iw+1:ih:1:0,fillborders=left=1:mode=mirror,"
+              << "crop=iw-1:ih:" << "if(eq(mod(n\\," << K << ")\\,0)\\,1\\,0)" << ":0";
     } else {
-        crop = "crop=iw:ih-1:0:1:enable='" + cond + "'";
-        pad  = "pad=iw:ih:0:1:enable='" + cond + "'";
-        fill = "fillborders=top=1:mode=mirror:enable='" + cond + "'";
+        vfoss << "pad=iw:ih+1:0:1,fillborders=top=1:mode=mirror,"
+              << "crop=iw:ih-1:0:" << "if(eq(mod(n\\," << K << ")\\,0)\\,1\\,0)";
     }
-    string vf = crop + "," + pad + "," + fill;
+    string vf = vfoss.str() + ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf, "-c:v","libx264","-crf","22", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "jitter_1px", "FAILED"}); return false; }
 
     outs.push_back({fs::path(out).filename().string(), "jitter_1px",
         (horiz? "dir=horiz":"dir=vert") + (string)", period=" + std::to_string(K)});
@@ -167,13 +167,13 @@ bool make_smooth(Context& ctx, std::vector<OutFile>& outs) {
     // 轻度平滑（尽量不毁纹理，强调边缘平滑）：gblur 小 sigma
     std::uniform_real_distribution<double> ds(0.7, 1.4);
     double sigma = ds(ctx.rng);
-    std::ostringstream vf; vf<< "gblur=sigma=" << std::fixed << std::setprecision(2) << sigma;
+    std::ostringstream vf; vf<< "gblur=sigma=" << std::fixed << std::setprecision(2) << sigma << ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","23", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "edge_oversmooth", "FAILED"}); return false; }
 
     std::ostringstream d; d<<"sigma="<<std::setprecision(2)<<sigma;
     outs.push_back({fs::path(out).filename().string(), "edge_oversmooth", d.str()});
@@ -184,13 +184,13 @@ bool make_highclip(Context& ctx, std::vector<OutFile>& outs) {
     // 高光裁剪：阈值 235..245（8-bit），把更亮的直接推到 255
     std::uniform_int_distribution<int> th(235,245);
     int T = th(ctx.rng);
-    string vf = "lutyuv=y='if(gte(val\\,"+std::to_string(T)+")\\,255\\,val)'";
+    string vf = "lutyuv=y='if(gte(val\\,"+std::to_string(T)+")\\,255\\,val)',scale=trunc(iw/2)*2:trunc(ih/2)*2";
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf, "-c:v","libx264","-crf","22", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "highlight_clip", "FAILED"}); return false; }
 
     outs.push_back({fs::path(out).filename().string(), "highlight_clip",
         "Y_threshold=" + std::to_string(T)});
@@ -226,16 +226,17 @@ bool make_chroma_bleed(Context& ctx, std::vector<OutFile>& outs) {
 
     // chromashift + 轻度 chroma 模糊
     std::ostringstream vf;
-    vf << "chromashift=cb_h="<<cbh<<":cr_h="<<crh<<":cb_v="<<cbv<<":cr_v="<<crv
+    vf << "chromashift=cbh="<<cbh<<":crh="<<crh<<":cbv="<<cbv<<":crv="<<crv
        << ":enable='"<< en.str() <<"',"
-       << "boxblur=0:1:enable='"<< en.str() <<"'";
+       << "boxblur=0:1:enable='"<< en.str() <<"',"
+       << "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
     string suf = rand_suffix(ctx);
-    string out = (ctx.cfg.out_dir / outname(ctx, suf)).string();
+    string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
 
     auto cmd = base_in_args(ctx);
     cmd.insert(cmd.end(), {"-vf", vf.str(), "-c:v","libx264","-crf","22", out});
-    if (run_cmd(cmd)!=0) return false;
+    if (run_cmd(cmd)!=0) { outs.push_back({fs::path(out).filename().string(), "chroma_bleed", "FAILED"}); return false; }
 
     std::ostringstream det;
     det<<"frames=";
@@ -251,9 +252,9 @@ bool make_chroma_bleed(Context& ctx, std::vector<OutFile>& outs) {
 bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
     // 1) 导出 BMP 帧序列
     fs::path tmp = ctx.cfg.out_dir / ("tmp_frames_" + rand_suffix(ctx));
-    util_ensure_dir(tmp);
+    if (!util_ensure_dir(tmp)) { std::cerr<<"cannot create tmp dir\n"; return false; }
     fs::path pat = tmp / "f_%06d.bmp";
-    string dump_out = pat.string();
+    string dump_out = pstr(pat);
 
     auto dump = base_in_args(ctx);
     dump.insert(dump.end(), {"-vsync","0", "-start_number","0", "-f","image2", dump_out});
@@ -297,11 +298,10 @@ bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
             ++drop_idx;
             continue;
         }
-        fs::path f = tmp / (std::stringstream{}<<std::setw(6)<<std::setfill('0')<<n, ""); // trick
-        std::ostringstream fn; fn<< (tmp / "f_") .string() << std::setw(6) << std::setfill('0') << n << ".bmp";
-        lof << "file " << util_quote(fn.str()) << "\n";
+        std::ostringstream fn; fn << "f_" << std::setw(6) << std::setfill('0') << n << ".bmp";
+        lof << "file " << fn.str() << "\n";
         if (dup_idx<(int)dup_pos.size() && n==dup_pos[dup_idx]) {
-            lof << "file " << util_quote(fn.str()) << "\n"; // 再写一次，实现“重复帧”
+            lof << "file " << fn.str() << "\n"; // 再写一次，实现“重复帧”
             ++dup_idx;
         }
     }
@@ -309,15 +309,15 @@ bool make_repeat(Context& ctx, std::vector<OutFile>& outs) {
 
     // 4) 重编码为 mp4
     string suf = rand_suffix(ctx);
-    fs::path out = ctx.cfg.out_dir / outname(ctx, suf);
+    fs::path out = fs::absolute(ctx.cfg.out_dir / outname(ctx, suf));
     std::vector<string> enc = {
         ctx.cfg.ffmpeg, "-hide_banner", "-y",
         "-r", std::to_string(ctx.cfg.fps),
-        "-f","concat","-safe","0","-i", list_path.string(),
+        "-f","concat","-safe","0","-i", pstr(list_path),
         "-c:v","libx264","-crf","22",
-        out.string()
+        pstr(out)
     };
-    if (run_cmd(enc)!=0) return false;
+    if (run_cmd(enc)!=0) { outs.push_back({ out.filename().string(), "repeat_frames_keep_count", "FAILED"}); return false; }
 
     // 5) 清理临时帧（如需保留调试可注释掉）
     std::error_code ec;
@@ -357,5 +357,8 @@ bool write_manifest(const Context& ctx, const std::vector<OutFile>& outs) {
     for (auto& o: outs) {
         ss << "  - "<< o.filename << " | " << o.kind << " | " << o.details << "\n";
     }
+    // 统计失败项
+    size_t failed=0; for (auto& o: outs) if (o.details=="FAILED") ++failed;
+    if (failed>0) ss << "failed_count="<<failed<<"\n";
     return util_write_text(man, ss.str());
 }
