@@ -6,7 +6,7 @@
 一个命令行小工具：读取原始 YUV 视频，按预设生成多种“肉眼不易察觉”的缺陷 MP4，并输出一份 manifest（“解密”）文件，记录种子、输入信息与各缺陷的参数/位置。
 
 ### 会生成哪些缺陷
-- lowres_blocky：先缩小再邻近放大，制造块感
+- bitrate_blocky：低码率 + 快预设编码产生的块状伪影（更贴近真实解码失真）
 - brightness_drift：整体 Y 亮度轻微偏移
 - jitter_1px：周期性 1 像素轻抖（水平/垂直）
 - edge_oversmooth：轻高斯模糊，强调边缘变软
@@ -16,8 +16,9 @@
 - grain：轻度胶片颗粒（时域噪声）+ 轻锐化
 - ringing：轻度过锐/振铃（unsharp+deblock）
 - banding：降低 Y 级别（近似 posterize）后轻模糊
-- ghosting：轻度时域平均（tblend low opacity）
-- repeat_frames_keep_count：插入少量重复帧，再从后部等量丢帧，保持总帧数一致
+- ghosting：轻度时域平均（tblend 低不透明度）
+- colorspace_mismatch：解码/编码阶段使用不同色彩空间（bt709 与 bt601）
+- repeat_frames_keep_count：在位置 p 重复 r 次，并等量从后续丢弃，保持总帧数一致
 
 输出的文件会在输入基名后追加随机 3 字母后缀，例如 `input_abc.mp4`（种子可控）。
 
@@ -83,7 +84,7 @@ input=D:/data/input.yuv
 size=1920x1080 pix=yuv420p fps=30
 total_frames~=300 (assume yuv420p 8-bit)
 outputs:
-  - input_abc.mp4 | lowres_blocky | down/up factor=8
+  - input_abc.mp4 | bitrate_blocky | b=500k preset=veryfast
   - input_def.mp4 | luma_bleed | frames=[42..47],[120..123] sigma=0.62 opacity=0.31
 ```
 
