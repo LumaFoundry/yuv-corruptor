@@ -536,135 +536,48 @@ bool make_colorspace_mismatch(Context &ctx, std::vector<OutFile> &outs) {
 }
 
 bool make_repeat(Context &ctx, std::vector<OutFile> &outs) {
-  // 1) 导出 BMP 帧序列
-  fs::path tmp = ctx.cfg.out_dir / ("tmp_frames_" + rand_suffix(ctx));
-  if (!util_ensure_dir(tmp)) {
-    std::cerr << "cannot create tmp dir\n";
-    return false;
-  }
-  fs::path pat = tmp / "f_%06d.bmp";
-  string dump_out = pstr(pat);
-
-  auto dump = base_in_args(ctx);
-  dump.insert(dump.end(),
-              {"-vsync", "0", "-start_number", "0", "-f", "image2", dump_out});
-  if (run_cmd(dump) != 0)
-    return false;
-
-  // 2) 生成索引：选择 K 个位置重复，K ~= 1%~2%
-  // 帧；并从后面等量丢弃保证总帧数一致
+  // 纯 ffmpeg 滤镜：在位置 p 将该帧重复 r 次，并丢弃其后的 r 帧，保持总帧数一致
   int N = (int)ctx.total_frames;
-  if (N <= 0) { // 回退用 ffprobe 估计
-    // 不强依赖；如果 N==0，直接选择一个小值
-    N = 200;
-  }
-  int K = std::max(1, N / 100); // 约 1%
-  std::uniform_int_distribution<int> pick(1, std::max(1, N - 2));
-  std::vector<int> dup_pos;
-  dup_pos.reserve(K);
-  for (int i = 0; i < K; ++i)
-    dup_pos.push_back(pick(ctx.rng));
-  std::sort(dup_pos.begin(), dup_pos.end());
-  dup_pos.erase(std::unique(dup_pos.begin(), dup_pos.end()), dup_pos.end());
-  K = (int)dup_pos.size();
-
-  // 准备最终帧序列：遍历 0..N-1，遇到 dup_pos 就把该帧写两次；
-  // 同时记录需要“抵消”的删除位置（例如每隔 N/K 在后段删一帧）
-  std::vector<int> drop_pos;
-  if (K > 0) {
-    int stride = std::max(N / (K + 1), 2);
-    for (int i = 0; i < K; ++i) {
-      int p = (N / 3) + i * stride;
-      if (p >= N)
-        p = N - 1 - i;
-      if (p <= 1)
-        p = 2 + i;
-      drop_pos.push_back(p);
-    }
-    std::sort(drop_pos.begin(), drop_pos.end());
-    drop_pos.erase(std::unique(drop_pos.begin(), drop_pos.end()),
-                   drop_pos.end());
-    while ((int)drop_pos.size() > K)
-      drop_pos.pop_back();
-    while ((int)drop_pos.size() < K)
-      drop_pos.push_back(N - 2 - (int)drop_pos.size());
+  if (N <= 0) {
+    N = 200; // 回退估计
   }
 
-  // 3) 写 concat list（使用 concat demuxer，带 header 与每帧 duration）
-  fs::path list_path = tmp / "list.txt";
-  std::ofstream lof(list_path);
-  lof << "ffconcat version 1.0\n";
-  int dup_idx = 0, drop_idx = 0;
-  for (int n = 0; n < N; ++n) {
-    if (drop_idx < (int)drop_pos.size() && n == drop_pos[drop_idx]) { // 跳过
-      ++drop_idx;
-      continue;
-    }
-    std::ostringstream fn;
-    fn << "f_" << std::setw(6) << std::setfill('0') << n << ".bmp";
-    lof << "file " << fn.str() << "\n";
-    lof << "duration " << (1.0 / std::max(1, ctx.cfg.fps)) << "\n";
-    if (dup_idx < (int)dup_pos.size() && n == dup_pos[dup_idx]) {
-      lof << "file " << fn.str() << "\n"; // 再写一次，实现“重复帧”
-      lof << "duration " << (1.0 / std::max(1, ctx.cfg.fps)) << "\n";
-      ++dup_idx;
-    }
-  }
-  // 末尾再写一次最后一帧，保证最后一个 duration 生效
-  if (N > 0) {
-    std::ostringstream last;
-    last << "f_" << std::setw(6) << std::setfill('0') << (N - 1) << ".bmp";
-    lof << "file " << last.str() << "\n";
-  }
-  lof.close();
+  std::uniform_int_distribution<int> rep(2, 8); // 重复次数 r
+  int r = rep(ctx.rng);
+  int safe = std::max(5, r + 1);
+  std::uniform_int_distribution<int> pick(safe, std::max(safe, N - safe - 1));
+  int p = pick(ctx.rng);
+  int drop_end = std::min(p + r, std::max(1, N - 2)); // 丢弃 [p+1..p+r]
 
-  // 4) 重编码为 mp4
+  // 构建滤镜：三段 select + loop；各段重置 PTS，从 0 开始；concat 后用 fps
+  // 归一到原 fps
+  std::ostringstream vf;
+  vf << "split=3[v0][v1][v2];"
+     << "[v0]select='lte(n\\," << p << ")',setpts=PTS-STARTPTS[a];"
+     << "[v1]select='eq(n\\," << p << ")',loop=" << r
+     << ":1:0,setpts=PTS-STARTPTS[b];"
+     << "[v2]select='gt(n\\," << drop_end << ")',setpts=PTS-STARTPTS[c];"
+     << "[a][b][c]concat=n=3:v=1:a=0,fps=" << ctx.cfg.fps
+     << ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
+
   string suf = rand_suffix(ctx);
-  fs::path out = fs::absolute(ctx.cfg.out_dir / outname(ctx, suf));
-  std::vector<string> enc = {ctx.cfg.ffmpeg,
-                             "-hide_banner",
-                             "-y",
-                             "-fflags",
-                             "+genpts",
-                             "-f",
-                             "concat",
-                             "-safe",
-                             "0",
-                             "-i",
-                             pstr(list_path),
-                             "-pix_fmt",
-                             "yuv420p",
-                             "-c:v",
-                             "libx264",
-                             "-crf",
-                             "22",
-                             pstr(out)};
-  if (run_cmd(enc) != 0) {
-    outs.push_back(
-        {out.filename().string(), "repeat_frames_keep_count", "FAILED"});
+  string out = pstr(fs::absolute(ctx.cfg.out_dir / outname(ctx, suf)));
+
+  auto cmd = base_in_args(ctx);
+  cmd.insert(cmd.end(), {"-fflags", "+genpts", "-vsync", "cfr", "-r",
+                         std::to_string(ctx.cfg.fps), "-vf", vf.str(), "-c:v",
+                         "libx264", "-crf", "22", out});
+  if (run_cmd(cmd) != 0) {
+    outs.push_back({fs::path(out).filename().string(),
+                    "repeat_frames_keep_count", "FAILED"});
     return false;
   }
 
-  // 5) 清理临时帧（如需保留调试可注释掉）
-  std::error_code ec;
-  fs::remove_all(tmp, ec);
-
-  // 记录
   std::ostringstream det;
-  det << "dups=" << K << " at ";
-  for (size_t i = 0; i < dup_pos.size(); ++i) {
-    if (i)
-      det << ",";
-    det << dup_pos[i];
-  }
-  det << " ; drops=" << drop_pos.size() << " at ";
-  for (size_t i = 0; i < drop_pos.size(); ++i) {
-    if (i)
-      det << ",";
-    det << drop_pos[i];
-  }
-  outs.push_back(
-      {out.filename().string(), "repeat_frames_keep_count", det.str()});
+  det << "repeat_at=" << p << " times=" << r << " drop=[" << (p + 1) << ".."
+      << drop_end << "]";
+  outs.push_back({fs::path(out).filename().string(), "repeat_frames_keep_count",
+                  det.str()});
   return true;
 }
 
