@@ -1,5 +1,33 @@
-# Build artifacts
-/build/
+############################################
+# CMake/Ninja build and cache
+############################################
+# Common build directories (root or subfolders)
+[Bb]uild*/
+**/[Bb]uild*/
+cmake-build-*/
+
+# CMake cache files and folders
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/install_manifest.txt
+**/CTestTestfile.cmake
+**/Testing/
+**/_deps/
+**/.cmake/
+CMakeUserPresets.json
+
+# Ninja
+**/.ninja_deps
+**/.ninja_log
+
+# Compile commands (any location) – IDE will regenerate
+compile_commands.json
+**/compile_commands.json
+
+############################################
+# Compiled artifacts
+############################################
 *.obj
 *.o
 *.a
@@ -10,22 +38,40 @@
 *.exp
 *.pdb
 *.ilk
+*.exe
 
-# VS Code
-.vscode/ipch/
-.vscode/.cmaketools.json
+############################################
+# IDE/project cache
+############################################
+.idea/
+.vs/
+.cache/
+.clangd/
+.clangd-cache/
+.ccls-cache/
 
-# Local compile commands copy
-/compile_commands.json
+# VS Code (keep curated configs)
+.vscode/
+!.vscode/settings.json
+!.vscode/c_cpp_properties.json
 
+############################################
 # OS junk
+############################################
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Outputs
+############################################
+# Outputs / temp
+############################################
 /out_*/
+**/out_*/
 *.mp4
 *.bmp
 manifest.txt
-
+*.log
+tmp/
+temp/
+*.tmp
 
