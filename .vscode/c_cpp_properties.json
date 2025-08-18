@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "name": "Win64-MinGW",
+      "compilerPath": "C:/msys64/mingw64/bin/g++.exe",
+      "intelliSenseMode": "gcc-x64",
+      "cppStandard": "c++17",
+      "cStandard": "c17",
+      "defines": [
+        "_WIN32",
+        "NDEBUG"
+      ],
+      "compileCommands": "${workspaceFolder}/compile_commands.json",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/msys64/mingw64/include",
+        "C:/msys64/mingw64/x86_64-w64-mingw32/include",
+        "C:/msys64/mingw64/include/c++/15.2.0",
+        "C:/msys64/mingw64/include/c++/15.2.0/x86_64-w64-mingw32",
+        "C:/msys64/mingw64/include/c++/15.2.0/backward"
+      ]
+    }
+  ],
+  "version": 4
+}
+
+

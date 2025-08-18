@@ -1,0 +1,27 @@
+{
+  "cmake.generator": "Ninja",
+  "cmake.preferredGenerators": ["Ninja"],
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureOnOpen": true,
+  "cmake.parallelJobs": 8,
+  "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
+  "cmake.configureSettings": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+  },
+
+  "C_Cpp.default.compilerPath": "C:/msys64/mingw64/bin/g++.exe",
+  "C_Cpp.default.intelliSenseMode": "gcc-x64",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+  "C_Cpp.default.compilerArgs": ["-std=gnu++17"],
+  "C_Cpp.errorSquiggles": "EnabledIfIncludesResolve",
+
+  // 若使用 clangd，请打开以下设置（clangd 扩展需已安装）
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--query-driver=C:/msys64/mingw64/bin/*"
+  ]
+}
+
