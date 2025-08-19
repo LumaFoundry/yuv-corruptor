@@ -361,9 +361,11 @@ bool make_chroma_bleed(Context &ctx, std::vector<OutFile> &outs) {
   }
   int N = (int)ctx.total_frames;
   std::uniform_int_distribution<int> nseg(1, 3);
-  std::uniform_int_distribution<int> seglen(2, 5);
-  std::uniform_int_distribution<int> shiftH(1, 2); // 1~2 px
-  std::uniform_int_distribution<int> shiftV(0, 1); // 0~1 px
+  // 延长每段长度以更明显
+  std::uniform_int_distribution<int> seglen(6, 12);
+  // 增大色度偏移幅度，且保证非零，使 Cb/Cr 都产生可见 bleed
+  std::uniform_int_distribution<int> shiftH(2, 3); // 2~3 px 更明显
+  std::uniform_int_distribution<int> shiftV(1, 2); // 1~2 px 非零
   int S = nseg(ctx.rng);
 
   // 组合 enable 段
@@ -389,8 +391,10 @@ bool make_chroma_bleed(Context &ctx, std::vector<OutFile> &outs) {
   // chromashift + 轻度 chroma 模糊
   std::ostringstream vf;
   vf << "chromashift=cbh=" << cbh << ":crh=" << crh << ":cbv=" << cbv
-     << ":crv=" << crv << ":enable='" << en.str() << "',"
-     << "boxblur=0:1:enable='" << en.str() << "',"
+     << ":crv=" << crv << ":enable='" << en.str()
+     << "',"
+     // 加强色度模糊以扩大“溢出”观感
+     << "boxblur=0:2:enable='" << en.str() << "',"
      << "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
   string suf = rand_suffix(ctx);
@@ -413,7 +417,7 @@ bool make_chroma_bleed(Context &ctx, std::vector<OutFile> &outs) {
     det << "[" << spans[i].first << ".." << spans[i].second << "]";
   }
   det << " cb_h=" << cbh << " cr_h=" << crh << " cb_v=" << cbv
-      << " cr_v=" << crv;
+      << " cr_v=" << crv << " (both Cb/Cr shifted)";
   outs.push_back(
       {fs::path(out).filename().string(), "chroma_bleed", det.str()});
   return true;
