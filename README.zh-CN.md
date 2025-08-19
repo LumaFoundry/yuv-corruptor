@@ -34,9 +34,7 @@
 ### jitter_1px（1 像素抖动）
 周期性 1px 水平/垂直环绕移位。对比参考帧与抖动帧，细竖线/横线边缘会出现位置跳动。下图中Diff模式下以下两种模式会周期性交替显示。
 
-![jitter_off（参考）](public/jitter_off.png)
-
-![jitter_on（抖动）](public/jitter_on.png)
+<img src="public/jitter_off.png" height="220" /> <img src="public/jitter_on.png" height="220" />
 
 ### edge_oversmooth（边缘过平滑）
 轻度高斯模糊使边缘与纹理变软，细节略有涂抹感。
