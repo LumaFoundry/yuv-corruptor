@@ -306,23 +306,29 @@ bool make_highclip(Context &ctx, std::vector<OutFile> &outs) {
       uint64_t total = 0;
       for (uint32_t v : hist)
         total += v;
-      std::uniform_real_distribution<double> pct(0.01, 0.05);
-      double target = pct(ctx.rng);
-      uint64_t cutoff = (uint64_t)(total * (1.0 - target));
-      uint64_t acc = 0;
-      int cdf_idx = 255;
-      for (int i = 0; i < 256; ++i) {
-        acc += hist[i];
-        if (acc >= cutoff) {
-          cdf_idx = i;
-          break;
+      // 仅针对 Y<250 的像素，选择“最亮约 1%”分位点为阈值，确保被裁剪像素来自
+      // <250
+      uint64_t sum_lt250 = 0;
+      for (int i = 0; i < 250; ++i)
+        sum_lt250 += hist[i];
+      if (sum_lt250 > 0) {
+        const double target = 0.01;
+        const uint64_t cutoff_lt = (uint64_t)(sum_lt250 * (1.0 - target));
+        uint64_t acc_lt = 0;
+        int cdf_idx_lt = 249;
+        for (int i = 0; i < 250; ++i) {
+          acc_lt += hist[i];
+          if (acc_lt >= cutoff_lt) {
+            cdf_idx_lt = i;
+            break;
+          }
         }
+        int chosen = cdf_idx_lt; // [0..249]
+        T = std::max(8, std::min(249, chosen));
+      } else {
+        // 若首帧不存在 Y<250 像素，则退化到接近 y_max 的轻微裁剪，仍限制到 249
+        T = std::min(249, std::max(8, y_max - 1));
       }
-      int lower = std::max(8, cdf_idx - 20);
-      int upper =
-          std::min(250, std::max(lower + 1, std::min(y_max - 1, cdf_idx)));
-      std::uniform_int_distribution<int> th(lower, upper);
-      T = th(ctx.rng);
     } else {
       int lower = std::max(10, y_max - 40);
       int upper = std::min(250, std::max(lower + 1, y_max - 1));
