@@ -145,19 +145,23 @@ static string outname(const Context &ctx, const string &suf) {
 }
 
 static std::vector<string> base_in_args(const Context &ctx) {
-  return {ctx.cfg.ffmpeg,
-          "-hide_banner",
-          "-y",
-          "-s",
-          std::to_string(ctx.cfg.w) + "x" + std::to_string(ctx.cfg.h),
-          "-pix_fmt",
-          ctx.cfg.pix,
-          "-r",
-          std::to_string(ctx.cfg.fps),
-          "-f",
-          "rawvideo",
-          "-i",
-          pstr(fs::absolute(ctx.cfg.in_path))};
+  // 对 .y4m 输入：直接让 ffmpeg 自识别容器与元数据；
+  // 对 raw YUV：显式提供 -s/-pix_fmt/-r/-f rawvideo
+  std::vector<string> args{ctx.cfg.ffmpeg, "-hide_banner", "-y"};
+  std::filesystem::path pin(ctx.cfg.in_path);
+  std::string ext = pin.extension().string();
+  for (auto &c : ext)
+    c = (char)std::tolower((unsigned char)c);
+  if (ext == ".y4m") {
+    args.insert(args.end(), {"-i", pstr(fs::absolute(pin))});
+  } else {
+    args.insert(args.end(),
+                {"-s",
+                 std::to_string(ctx.cfg.w) + "x" + std::to_string(ctx.cfg.h),
+                 "-pix_fmt", ctx.cfg.pix, "-r", std::to_string(ctx.cfg.fps),
+                 "-f", "rawvideo", "-i", pstr(fs::absolute(pin))});
+  }
+  return args;
 }
 
 bool make_blocky(Context &ctx, std::vector<OutFile> &outs) {
