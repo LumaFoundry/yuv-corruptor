@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -56,6 +57,30 @@ inline bool util_ensure_dir(const fs::path &d) {
   if (fs::exists(d, ec))
     return true;
   return fs::create_directories(d, ec);
+}
+// 执行命令并捕获标准输出；失败返回空串
+inline std::string util_exec_read_all(const std::string &cmd) {
+#ifdef _WIN32
+  FILE *pipe = _popen(cmd.c_str(), "r");
+#else
+  FILE *pipe = popen(cmd.c_str(), "r");
+#endif
+  if (!pipe)
+    return std::string();
+  std::string out;
+  char buf[512];
+  while (true) {
+    size_t n = fread(buf, 1, sizeof(buf), pipe);
+    if (n == 0)
+      break;
+    out.append(buf, buf + n);
+  }
+#ifdef _WIN32
+  _pclose(pipe);
+#else
+  pclose(pipe);
+#endif
+  return out;
 }
 // 读取首帧 Y 平面的直方图（256 bins）。成功返回 true 并填充 hist
 inline bool probe_luma_hist_first_frame(const Context &ctx,
@@ -121,13 +146,46 @@ bool init_context(Context &ctx) {
     return false;
   }
 
-  // 估算总帧数（仅 yuv420p 8-bit）
-  if (ctx.cfg.pix != "yuv420p") {
-    std::cerr << "[warn] frame count estimation assumes yuv420p 8-bit.\n";
+  // 估算总帧数：raw 走尺寸估算；y4m 用 ffprobe 读取真实帧数
+  std::string ext = in.extension().string();
+  for (auto &c : ext)
+    c = (char)std::tolower((unsigned char)c);
+  if (ext == ".y4m") {
+    // 使用 ffprobe 统计帧数，并丢弃 stderr，避免参数解析噪声
+    std::string cmd = ctx.cfg.ffprobe +
+                      " -v error -select_streams v:0 -count_packets "
+                      "-show_entries stream=nb_read_packets -of csv=p=0 \"" +
+                      fs::absolute(in).string() + "\"";
+#ifdef _WIN32
+    cmd += " 2> NUL";
+#else
+    cmd += " 2>/dev/null";
+#endif
+    std::string out = util_exec_read_all(cmd);
+    // 修剪空白
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r' ||
+                            out.back() == ' ' || out.back() == '\t'))
+      out.pop_back();
+    size_t p0 = 0;
+    while (p0 < out.size() && (out[p0] == '\n' || out[p0] == '\r' ||
+                               out[p0] == ' ' || out[p0] == '\t'))
+      ++p0;
+    if (p0 > 0)
+      out.erase(0, p0);
+    try {
+      ctx.total_frames = (size_t)std::stoull(out);
+    } catch (...) {
+      ctx.total_frames = 0;
+    }
+  } else {
+    if (ctx.cfg.pix != "yuv420p") {
+      std::cerr << "[warn] frame count estimation assumes yuv420p 8-bit.\n";
+    }
+    const uint64_t bytes_per_frame = (uint64_t)ctx.cfg.w * ctx.cfg.h * 3 / 2;
+    const uint64_t sz = util_file_size_or(in);
+    ctx.total_frames =
+        (bytes_per_frame > 0) ? (size_t)(sz / bytes_per_frame) : 0;
   }
-  const uint64_t bytes_per_frame = (uint64_t)ctx.cfg.w * ctx.cfg.h * 3 / 2;
-  const uint64_t sz = util_file_size_or(in);
-  ctx.total_frames = (bytes_per_frame > 0) ? (size_t)(sz / bytes_per_frame) : 0;
 
   return true;
 }
@@ -364,6 +422,8 @@ bool make_chroma_bleed(Context &ctx, std::vector<OutFile> &outs) {
     std::cerr << "[warn] total_frames unknown; assuming short video\n";
   }
   int N = (int)ctx.total_frames;
+  if (N <= 0)
+    N = 200; // y4m/raw 未知时回退，避免只命中起始帧
   std::uniform_int_distribution<int> nseg(1, 3);
   // 延长每段长度以更明显
   std::uniform_int_distribution<int> seglen(6, 12);
@@ -433,6 +493,8 @@ bool make_luma_bleed(Context &ctx, std::vector<OutFile> &outs) {
     std::cerr << "[warn] total_frames unknown; assuming short video\n";
   }
   int N = (int)ctx.total_frames;
+  if (N <= 0)
+    N = 200; // y4m/raw 未知时回退，避免只命中起始帧
   std::uniform_int_distribution<int> nseg(1, 3);
   std::uniform_int_distribution<int> seglen(2, 5);
   int S = nseg(ctx.rng);
