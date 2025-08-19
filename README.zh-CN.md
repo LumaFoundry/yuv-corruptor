@@ -32,7 +32,7 @@
 ![bitrate_blocky](public/bitrate_blocky.png)
 
 ### jitter_1px（1 像素抖动）
-周期性 1px 水平/垂直环绕移位。对比参考帧与抖动帧，细竖线/横线边缘会出现位置跳动。下图中Diff模式下以下两种模式会周期性交替显示。
+周期性 1px 水平/垂直环绕移位。对比参考帧与抖动帧，细竖线/横线边缘会出现位置跳动。下图中Diff模式下以下两种模式会周期性交替显示，呈闪烁状。
 
 <img src="public/jitter_off.png" height="220" /> <img src="public/jitter_on.png" height="220" />
 
@@ -43,7 +43,7 @@ Diff模式下物体边缘会格外突出。例如下图中快艇和logo边缘都
 ![edge_oversmooth](public/edge_smooth.png)
 
 ### highlight_clip（高光裁剪）
-超过阈值的高光被裁为纯白，高亮区域的高光细节丢失。下图从左到右依次是：原视频、高光裁剪后视频、Diff模式。
+超过阈值的高光被裁为纯白，高亮区域的高光细节丢失。下图从左到右依次是：原视频、高光裁剪后视频、Y-Diff模式。特点是Y-Diff图像会在超过阈值时突变。
 
 ![highlight_clip](public/highlight_clip.png)
 
