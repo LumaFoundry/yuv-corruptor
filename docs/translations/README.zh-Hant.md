@@ -29,55 +29,55 @@
 ### bitrate_blocky（低碼率區塊）
 採用低碼率 + 快速預設進行編碼，平坦區域、運動區域容易出現明顯巨集區塊邊界/馬賽克。下圖右側為低碼率編碼的結果。
 
-![bitrate_blocky](public/bitrate_blocky.png)
+![bitrate_blocky](../../public/bitrate_blocky.png)
 
 ### jitter_1px（1 像素抖動）
 週期性 1px 水平/垂直環繞位移。對比參考幀與抖動幀，細豎線/橫線邊緣會出現位置跳動。下圖中 Diff 模式會週期性交替顯示，呈現閃爍狀。
 
-<img src="public/jitter_off.png" height="220" /> <img src="public/jitter_on.png" height="220" />
+<img src="../../public/jitter_off.png" height="220" /> <img src="../../public/jitter_on.png" height="220" />
 
 ### edge_oversmooth（邊緣過平滑）
 輕度高斯模糊使邊緣與紋理變軟，細節略有塗抹感。
 Diff 模式下物體邊緣會格外突出。例如下圖中快艇與右下角 logo 邊緣都被突出顯示。
 
-![edge_oversmooth](public/edge_smooth.png)
+![edge_oversmooth](../../public/edge_smooth.png)
 
 ### highlight_clip（高光裁剪）
 超過閾值的高光被裁為純白，高亮區域的高光細節丟失。下圖從左到右依次是：原影片、高光裁剪後、Diff。
 
-![highlight_clip](public/highlight_clip.png)
+![highlight_clip](../../public/highlight_clip.png)
 
 ### chroma_bleed（色度「溢出/錯位」）
 色度通道發生輕微錯位，邊緣處出現彩色邊/拖影；常見為 Cb/Cr 的水平/垂直微位移。下圖右側為色彩溢出的結果，色彩向左側偏移。
 
-![chroma_bleed](public/chroma_bleeding.png)
+![chroma_bleed](../../public/chroma_bleeding.png)
 
 ### grain（膠片顆粒）
 加入細微雜訊，平坦區域顯示輕度隨機紋理。右圖為顆粒效果結果。
 
-![grain](public/grain.png)
+![grain](../../public/grain.png)
 
 ### ringing（振鈴/光暈）
 過銳與輕去塊配合，在強對比邊緣附近出現光暈/二次紋理。
 Diff 模式下主要體現為靜態物體邊緣格外突出，例如圖中右下角 logo。
 
-![ringing](public/ringing.png)
+![ringing](../../public/ringing.png)
 
 ### banding（色帶）
 降低亮度等級（近似色階化）後更易出現條帶狀過渡，漸變區域尤為明顯。
 
-![banding](public/banding.png)
+![banding](../../public/banding.png)
 
 ### ghosting（拖影）
 時域混合造成運動目標後方出現淡淡尾跡。
 Diff 模式下，運動物體邊緣更為明顯，而靜態物體變化不大。
 
-![ghosting](public/ghosting.png)
+![ghosting](../../public/ghosting.png)
 
 ### colorspace_mismatch（色彩空間不匹配）
 以一種色彩空間（如 BT.709）解碼卻以另一種（如 BT.601）標記/轉換輸出，畫面出現輕微色偏（膚色、紅橙等尤為明顯）。右圖為刻意造成的色偏示例。
 
-![colorspace_mismatch](public/colourspace.png)
+![colorspace_mismatch](../../public/colourspace.png)
 
 ### 依賴
 - C++17 編譯器（GCC/Clang/MSVC）

@@ -27,52 +27,52 @@ The following notes are based on `CoastGuard_1920x1080_30.yuv`, with seed `17555
 ### bitrate_blocky
 Low-bitrate H.264 at a fast preset produces visible macroblock boundaries, especially in flat areas and motion. The right panel below shows the low-bitrate result.
 
-![bitrate_blocky](public/bitrate_blocky.png)
+![bitrate_blocky](../../public/bitrate_blocky.png)
 
 ### jitter_1px
 Periodic 1px wrap shift horizontally or vertically. Compare reference vs jittered frame; pay attention to thin vertical/horizontal edges. In Diff mode the two states alternate periodically.
 
-<img src="public/jitter_off.png" height="220" /> <img src="public/jitter_on.png" height="220" />
+<img src="../../public/jitter_off.png" height="220" /> <img src="../../public/jitter_on.png" height="220" />
 
 ### edge_oversmooth
 Mild gaussian blur softens edges and textures; fine details look smeared. In Diff mode, object contours become prominent; for example, the boat and the corner logo edges are highlighted.
 
-![edge_oversmooth](public/edge_smooth.png)
+![edge_oversmooth](../../public/edge_smooth.png)
 
 ### highlight_clip
 Highlights above a threshold are clipped to white; bright regions lose specular detail. Left to right: original, clipped, Diff.
 
-![highlight_clip](public/highlight_clip.png)
+![highlight_clip](../../public/highlight_clip.png)
 
 ### chroma_bleed
 Chroma misalignment causes color fringes bleeding across edges; often small horizontal/vertical shifts in Cb/Cr. In the example, the right panel shows chroma bleeding with colors shifted left.
 
-![chroma_bleed](public/chroma_bleeding.png)
+![chroma_bleed](../../public/chroma_bleeding.png)
 
 ### grain
 Subtle film grain adds fine noise; flat areas show stochastic texture. The right panel shows the grain-applied result.
 
-![grain](public/grain.png)
+![grain](../../public/grain.png)
 
 ### ringing
 Oversharpening/deblocking interplay yields halos around high-contrast edges. In Diff mode, static object edges stand out (e.g., the corner logo).
 
-![ringing](public/ringing.png)
+![ringing](../../public/ringing.png)
 
 ### banding
 Reduced luma levels or posterization reveals visible bands in smooth gradients.
 
-![banding](public/banding.png)
+![banding](../../public/banding.png)
 
 ### ghosting
 Temporal blending leaves faint trails following motion. In Diff mode, moving-object edges are emphasized while static ones are not; e.g., sea and boat edges are clear while the logo changes little.
 
-![ghosting](public/ghosting.png)
+![ghosting](../../public/ghosting.png)
 
 ### colorspace_mismatch
 Decode as one colorspace (e.g., BT.709) but mark/convert to another (e.g., BT.601), leading to hue/saturation bias (skin tones shift, reds/oranges change). The right panel shows the intentional color bias.
 
-![colorspace_mismatch](public/colourspace.png)
+![colorspace_mismatch](../../public/colourspace.png)
 
 Outputs are randomly named using the base filename plus a three-letter suffix, e.g. `input_abc.mp4`, controlled by a seed.
 
