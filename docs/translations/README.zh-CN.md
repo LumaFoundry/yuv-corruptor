@@ -1,7 +1,7 @@
 ## yuv-corruptor  
 [![Latest Artifacts](https://img.shields.io/badge/下载-最新构建-blue?style=flat-square&logo=github)](https://github.com/BoningZ/yuv-corruptor/actions/workflows/build-windows.yml)
 
-[🇺🇸 英文（美式）](README.en-US.md) | [🇬🇧 英文（英式）](../../README.md) | [🇨🇳 中文（简体）](README.zh-CN.md) | [🇲🇴 中文（繁体）](README.zh-Hant.md)
+[🇺🇸 English (Simplified)](README.en-US.md) | [🇬🇧 English (Traditional)](../../README.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇲🇴 繁体中文](README.zh-Hant.md)
 
 一个命令行小工具：读取原始 YUV 视频，按预设生成多种“肉眼不易察觉”的缺陷 MP4，并输出一份 manifest（“解密”）文件，记录种子、输入信息与各缺陷的参数/位置。
 
