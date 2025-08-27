@@ -1,7 +1,7 @@
 ## yuv-corruptor  
 [![Latest Artifacts](https://img.shields.io/badge/Download-Latest%20Build-blue?style=flat-square&logo=github)](https://github.com/BoningZ/yuv-corruptor/actions/workflows/build-windows.yml)
 
-[🇺🇸 English (Simplified)](README.en-US.md) | [🇬🇧 English (Traditional)](../../README.md) | [🇨🇳 Chinese (Simplified)](README.zh-CN.md) | [🇲🇴 Chinese (Traditional)](README.zh-Hant.md)
+[:us: English (Simplified)](README.en-US.md) | [:uk: English (Traditional)](../../README.md) | [:cn: Chinese (Simplified)](README.zh-CN.md) | [:macau: Chinese (Traditional)](README.zh-Hant.md)
 
 A small command-line tool that takes a raw YUV video and produces multiple subtly flawed MP4s for QA/testing. It also writes a manifest ("decryption") file describing the seed, input metadata, and the exact defect/positions per output.
 
